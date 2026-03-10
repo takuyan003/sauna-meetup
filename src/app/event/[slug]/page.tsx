@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScheduleGrid } from "@/components/schedule-grid";
 import { ResponseForm } from "@/components/response-form";
-import type { Event } from "@/lib/types";
+import type { Event, Participant } from "@/lib/types";
 
 export default function EventPage() {
   const params = useParams();
@@ -19,6 +19,9 @@ export default function EventPage() {
   const [copied, setCopied] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
+  const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
+  const [deletingParticipantId, setDeletingParticipantId] = useState<string | null>(null);
 
   const fetchEvent = useCallback(async () => {
     try {
@@ -43,6 +46,8 @@ export default function EventPage() {
   useEffect(() => {
     const token = localStorage.getItem(`admin_token_${slug}`);
     setIsAdmin(!!token);
+    const participantId = localStorage.getItem(`participant_${slug}`);
+    setMyParticipantId(participantId);
   }, [slug]);
 
   const handleDelete = async () => {
@@ -63,6 +68,32 @@ export default function EventPage() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleDeleteParticipant = async (participantId: string, participantName: string) => {
+    if (!confirm(`${participantName}さんの回答を削除しますか？`)) return;
+    setDeletingParticipantId(participantId);
+    try {
+      const res = await fetch(`/api/events/${slug}/responses`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId }),
+      });
+      if (res.ok) {
+        if (participantId === myParticipantId) {
+          localStorage.removeItem(`participant_${slug}`);
+          setMyParticipantId(null);
+        }
+        fetchEvent();
+      }
+    } finally {
+      setDeletingParticipantId(null);
+    }
+  };
+
+  const handleEditSubmitted = () => {
+    setEditingParticipant(null);
+    fetchEvent();
   };
 
   const copyUrl = async () => {
@@ -197,6 +228,55 @@ export default function EventPage() {
         </CardContent>
       </Card>
 
+      {/* 参加者一覧（編集・削除ボタン付き） */}
+      {event.participants.length > 0 && (isAdmin || myParticipantId) && (
+        <Card className="border-sky-200">
+          <CardHeader>
+            <CardTitle className="text-sky-900">回答の変更</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {event.participants.map((p) => {
+              const canEdit = isAdmin || p.id === myParticipantId;
+              if (!canEdit) return null;
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between p-2 rounded bg-sky-50"
+                >
+                  <span className="font-medium text-sky-900">
+                    {p.name}
+                    {p.id === myParticipantId && (
+                      <span className="text-xs text-sky-500 ml-1">（あなた）</span>
+                    )}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingParticipant(p)}
+                      className="border-sky-300 text-sky-700 hover:bg-sky-50 cursor-pointer text-xs"
+                    >
+                      変更
+                    </Button>
+                    {isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteParticipant(p.id, p.name)}
+                        disabled={deletingParticipantId === p.id}
+                        className="border-red-300 text-red-600 hover:bg-red-50 cursor-pointer text-xs"
+                      >
+                        {deletingParticipantId === p.id ? "削除中..." : "削除"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* 施設一覧 */}
       {event.facilities.length > 0 && (
         <Card className="border-sky-200">
@@ -253,8 +333,17 @@ export default function EventPage() {
         </Card>
       )}
 
-      {/* 回答フォーム */}
-      <ResponseForm event={event} onSubmitted={fetchEvent} />
+      {/* 回答フォーム（編集モード or 新規） */}
+      {editingParticipant ? (
+        <ResponseForm
+          event={event}
+          onSubmitted={handleEditSubmitted}
+          editParticipant={editingParticipant}
+          onCancelEdit={() => setEditingParticipant(null)}
+        />
+      ) : (
+        <ResponseForm event={event} onSubmitted={fetchEvent} />
+      )}
     </div>
   );
 }

@@ -354,6 +354,133 @@ function addResponseMemory(slug: string, input: CreateResponseInput): Participan
 }
 
 // ============================================================
+// 参加者回答更新 (Supabase)
+// ============================================================
+async function updateResponseSupabase(
+  slug: string,
+  participantId: string,
+  input: CreateResponseInput
+): Promise<Participant | null> {
+  const { data: event } = await supabase!
+    .from("events")
+    .select("id")
+    .eq("slug", slug)
+    .single();
+  if (!event) return null;
+
+  // 参加者が存在するか確認
+  const { data: participant } = await supabase!
+    .from("participants")
+    .select("*")
+    .eq("id", participantId)
+    .eq("event_id", event.id)
+    .single();
+  if (!participant) return null;
+
+  // 名前・コメント更新
+  await supabase!
+    .from("participants")
+    .update({ name: input.name, comment: input.comment })
+    .eq("id", participantId);
+
+  // 日程回答を差し替え
+  await supabase!.from("date_responses").delete().eq("participant_id", participantId);
+  if (input.dateResponses.length > 0) {
+    await supabase!.from("date_responses").insert(
+      input.dateResponses.map((dr) => ({
+        participant_id: participantId,
+        event_date_id: dr.eventDateId,
+        response: dr.response,
+      }))
+    );
+  }
+
+  // 施設投票を差し替え
+  await supabase!.from("facility_votes").delete().eq("participant_id", participantId);
+  if (input.facilityVotes.length > 0) {
+    await supabase!.from("facility_votes").insert(
+      input.facilityVotes.map((fid) => ({
+        participant_id: participantId,
+        event_facility_id: fid,
+      }))
+    );
+  }
+
+  return {
+    id: participantId,
+    eventId: event.id,
+    name: input.name,
+    comment: input.comment,
+    dateResponses: input.dateResponses,
+    facilityVotes: input.facilityVotes,
+    createdAt: participant.created_at,
+  };
+}
+
+async function deleteResponseSupabase(
+  slug: string,
+  participantId: string
+): Promise<boolean> {
+  const { data: event } = await supabase!
+    .from("events")
+    .select("id")
+    .eq("slug", slug)
+    .single();
+  if (!event) return false;
+
+  const { error } = await supabase!
+    .from("participants")
+    .delete()
+    .eq("id", participantId)
+    .eq("event_id", event.id);
+  return !error;
+}
+
+// ============================================================
+// 参加者回答更新 (Memory)
+// ============================================================
+function updateResponseMemory(
+  slug: string,
+  participantId: string,
+  input: CreateResponseInput
+): Participant | null {
+  const event = memoryEvents.get(slug);
+  if (!event) return null;
+  const participant = event.participants.find((p) => p.id === participantId);
+  if (!participant) return null;
+
+  // 施設投票を更新（古い分を減算、新しい分を加算）
+  for (const fid of participant.facilityVotes) {
+    const f = event.facilities.find((x) => x.id === fid);
+    if (f) f.votes--;
+  }
+  for (const fid of input.facilityVotes) {
+    const f = event.facilities.find((x) => x.id === fid);
+    if (f) f.votes++;
+  }
+
+  participant.name = input.name;
+  participant.comment = input.comment;
+  participant.dateResponses = input.dateResponses;
+  participant.facilityVotes = input.facilityVotes;
+  return participant;
+}
+
+function deleteResponseMemory(slug: string, participantId: string): boolean {
+  const event = memoryEvents.get(slug);
+  if (!event) return false;
+  const idx = event.participants.findIndex((p) => p.id === participantId);
+  if (idx === -1) return false;
+  const participant = event.participants[idx];
+  for (const fid of participant.facilityVotes) {
+    const f = event.facilities.find((x) => x.id === fid);
+    if (f) f.votes--;
+  }
+  event.participants.splice(idx, 1);
+  return true;
+}
+
+// ============================================================
 // 統合エクスポート
 // ============================================================
 export async function createEvent(input: CreateEventInput): Promise<Event> {
@@ -389,4 +516,21 @@ export async function addResponse(
 ): Promise<Participant | null> {
   if (isSupabaseConfigured) return addResponseSupabase(slug, input);
   return addResponseMemory(slug, input);
+}
+
+export async function updateResponse(
+  slug: string,
+  participantId: string,
+  input: CreateResponseInput
+): Promise<Participant | null> {
+  if (isSupabaseConfigured) return updateResponseSupabase(slug, participantId, input);
+  return updateResponseMemory(slug, participantId, input);
+}
+
+export async function deleteResponse(
+  slug: string,
+  participantId: string
+): Promise<boolean> {
+  if (isSupabaseConfigured) return deleteResponseSupabase(slug, participantId);
+  return deleteResponseMemory(slug, participantId);
 }

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FacilityCard } from "./facility-card";
-import type { Event, DateResponse } from "@/lib/types";
+import type { Event, DateResponse, Participant } from "@/lib/types";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -27,15 +27,30 @@ const responseOptions: { value: DateResponse["response"]; label: string; color: 
 interface ResponseFormProps {
   event: Event;
   onSubmitted: () => void;
+  editParticipant?: Participant;
+  onCancelEdit?: () => void;
 }
 
-export function ResponseForm({ event, onSubmitted }: ResponseFormProps) {
-  const [name, setName] = useState("");
-  const [comment, setComment] = useState("");
+export function ResponseForm({ event, onSubmitted, editParticipant, onCancelEdit }: ResponseFormProps) {
+  const isEdit = !!editParticipant;
+
+  const [name, setName] = useState(editParticipant?.name || "");
+  const [comment, setComment] = useState(editParticipant?.comment || "");
   const [responses, setResponses] = useState<Record<string, DateResponse["response"]>>(
-    Object.fromEntries(event.dates.map((d) => [d.id, "○" as const]))
+    editParticipant
+      ? Object.fromEntries(
+          event.dates.map((d) => {
+            const existing = editParticipant.dateResponses.find((r) => r.eventDateId === d.id);
+            return [d.id, existing?.response || "○"];
+          })
+        )
+      : Object.fromEntries(event.dates.map((d) => [d.id, "○" as const]))
   );
-  const [facilityVotes, setFacilityVotes] = useState<Set<string>>(new Set());
+  const [facilityVotes, setFacilityVotes] = useState<Set<string>>(
+    editParticipant
+      ? new Set(editParticipant.facilityVotes)
+      : new Set()
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const setResponse = (dateId: string, value: DateResponse["response"]) => {
@@ -57,25 +72,46 @@ export function ResponseForm({ event, onSubmitted }: ResponseFormProps) {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/events/${event.slug}/responses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          comment: comment.trim(),
-          dateResponses: Object.entries(responses).map(([eventDateId, response]) => ({
-            eventDateId,
-            response,
-          })),
-          facilityVotes: Array.from(facilityVotes),
-        }),
-      });
-      if (res.ok) {
-        setName("");
-        setComment("");
-        setResponses(Object.fromEntries(event.dates.map((d) => [d.id, "○" as const])));
-        setFacilityVotes(new Set());
-        onSubmitted();
+      const payload = {
+        name: name.trim(),
+        comment: comment.trim(),
+        dateResponses: Object.entries(responses).map(([eventDateId, response]) => ({
+          eventDateId,
+          response,
+        })),
+        facilityVotes: Array.from(facilityVotes),
+      };
+
+      if (isEdit && editParticipant) {
+        // 編集モード: PUT
+        const res = await fetch(`/api/events/${event.slug}/responses`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            participantId: editParticipant.id,
+            ...payload,
+          }),
+        });
+        if (res.ok) {
+          onSubmitted();
+        }
+      } else {
+        // 新規モード: POST
+        const res = await fetch(`/api/events/${event.slug}/responses`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const participant = await res.json();
+          // 参加者IDをlocalStorageに保存
+          localStorage.setItem(`participant_${event.slug}`, participant.id);
+          setName("");
+          setComment("");
+          setResponses(Object.fromEntries(event.dates.map((d) => [d.id, "○" as const])));
+          setFacilityVotes(new Set());
+          onSubmitted();
+        }
       }
     } finally {
       setSubmitting(false);
@@ -86,7 +122,9 @@ export function ResponseForm({ event, onSubmitted }: ResponseFormProps) {
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card className="border-sky-200">
         <CardHeader>
-          <CardTitle className="text-sky-900">出欠を入力</CardTitle>
+          <CardTitle className="text-sky-900">
+            {isEdit ? "回答を変更" : "出欠を入力"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -160,13 +198,25 @@ export function ResponseForm({ event, onSubmitted }: ResponseFormProps) {
             />
           </div>
 
-          <Button
-            type="submit"
-            disabled={submitting || !name.trim()}
-            className="w-full bg-sky-600 hover:bg-sky-700 text-white cursor-pointer"
-          >
-            {submitting ? "送信中..." : "回答する"}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              disabled={submitting || !name.trim()}
+              className="flex-1 bg-sky-600 hover:bg-sky-700 text-white cursor-pointer"
+            >
+              {submitting ? "送信中..." : isEdit ? "変更を保存" : "回答する"}
+            </Button>
+            {isEdit && onCancelEdit && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancelEdit}
+                className="border-sky-300 text-sky-700 hover:bg-sky-50 cursor-pointer"
+              >
+                キャンセル
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </form>
