@@ -148,7 +148,7 @@ export function EventForm({ editEvent, adminToken }: EventFormProps = {}) {
         </CardHeader>
         <CardContent className="space-y-3">
           {dates.map((d, i) => (
-            <div key={i} className="flex gap-2 items-end">
+            <div key={i} className="flex flex-col sm:flex-row gap-2 sm:items-end">
               <div className="flex-1">
                 <Label className="text-sky-800 text-sm">日付</Label>
                 <Input
