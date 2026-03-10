@@ -149,23 +149,23 @@ export function EventForm({ editEvent, adminToken }: EventFormProps = {}) {
         <CardContent className="space-y-3">
           {dates.map((d, i) => (
             <div key={i} className="flex flex-col sm:flex-row gap-2 sm:items-end">
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <Label className="text-sky-800 text-sm">日付</Label>
                 <Input
                   type="date"
                   value={d.date}
                   onChange={(e) => updateDate(i, "date", e.target.value)}
-                  className="border-sky-300 focus-visible:ring-sky-400"
+                  className="border-sky-300 focus-visible:ring-sky-400 w-full"
                   required
                 />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <Label className="text-sky-800 text-sm">時間帯（任意）</Label>
                 <Input
                   placeholder="例: 14:00〜"
                   value={d.timeLabel}
                   onChange={(e) => updateDate(i, "timeLabel", e.target.value)}
-                  className="border-sky-300 focus-visible:ring-sky-400"
+                  className="border-sky-300 focus-visible:ring-sky-400 w-full"
                 />
               </div>
               {dates.length > 1 && (
