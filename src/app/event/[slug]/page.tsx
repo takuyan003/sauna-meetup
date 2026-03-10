@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,14 @@ import type { Event } from "@/lib/types";
 
 export default function EventPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string;
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchEvent = useCallback(async () => {
     try {
@@ -36,6 +39,31 @@ export default function EventPage() {
   useEffect(() => {
     fetchEvent();
   }, [fetchEvent]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(`admin_token_${slug}`);
+    setIsAdmin(!!token);
+  }, [slug]);
+
+  const handleDelete = async () => {
+    if (!confirm("このイベントを削除しますか？この操作は取り消せません。")) return;
+    const token = localStorage.getItem(`admin_token_${slug}`);
+    if (!token) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/events/${slug}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminToken: token }),
+      });
+      if (res.ok) {
+        localStorage.removeItem(`admin_token_${slug}`);
+        router.push("/");
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const copyUrl = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -84,7 +112,30 @@ export default function EventPage() {
     <div className="space-y-6">
       {/* イベント情報 */}
       <div>
-        <h1 className="text-2xl font-bold text-sky-900 mb-2">{event.title}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-bold text-sky-900 mb-2">{event.title}</h1>
+          {isAdmin && (
+            <div className="flex gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/event/${slug}/edit`)}
+                className="border-sky-300 text-sky-700 hover:bg-sky-50 cursor-pointer"
+              >
+                編集
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="border-red-300 text-red-600 hover:bg-red-50 cursor-pointer"
+              >
+                {deleting ? "削除中..." : "削除"}
+              </Button>
+            </div>
+          )}
+        </div>
         {event.description && (
           <p className="text-sky-700 whitespace-pre-wrap">{event.description}</p>
         )}

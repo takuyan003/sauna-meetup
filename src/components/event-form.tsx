@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Event } from "@/lib/types";
 
 interface DateCandidate {
   date: string;
@@ -19,12 +20,22 @@ interface FacilityCandidate {
   url: string;
 }
 
-export function EventForm() {
+interface EventFormProps {
+  editEvent?: Event;
+  adminToken?: string;
+}
+
+export function EventForm({ editEvent, adminToken }: EventFormProps = {}) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [dates, setDates] = useState<DateCandidate[]>([{ date: "", timeLabel: "" }]);
-  const [facilities, setFacilities] = useState<FacilityCandidate[]>([]);
+  const isEdit = !!editEvent;
+  const [title, setTitle] = useState(editEvent?.title || "");
+  const [description, setDescription] = useState(editEvent?.description || "");
+  const [dates, setDates] = useState<DateCandidate[]>(
+    editEvent?.dates.map((d) => ({ date: d.date, timeLabel: d.timeLabel })) || [{ date: "", timeLabel: "" }]
+  );
+  const [facilities, setFacilities] = useState<FacilityCandidate[]>(
+    editEvent?.facilities.map((f) => ({ name: f.name, address: f.address, url: f.url })) || []
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const addDate = () => setDates([...dates, { date: "", timeLabel: "" }]);
@@ -51,19 +62,42 @@ export function EventForm() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          description,
-          dates: validDates,
-          facilities: facilities.filter((f) => f.name.trim()),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        router.push(`/event/${data.slug}`);
+      if (isEdit && editEvent) {
+        // 編集モード
+        const res = await fetch(`/api/events/${editEvent.slug}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description,
+            dates: validDates,
+            facilities: facilities.filter((f) => f.name.trim()),
+            adminToken,
+          }),
+        });
+        if (res.ok) {
+          router.push(`/event/${editEvent.slug}`);
+        }
+      } else {
+        // 新規作成モード
+        const res = await fetch("/api/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description,
+            dates: validDates,
+            facilities: facilities.filter((f) => f.name.trim()),
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          // 管理トークンをlocalStorageに保存
+          if (data.adminToken) {
+            localStorage.setItem(`admin_token_${data.slug}`, data.adminToken);
+          }
+          router.push(`/event/${data.slug}`);
+        }
       }
     } finally {
       setSubmitting(false);
@@ -216,13 +250,15 @@ export function EventForm() {
         </CardContent>
       </Card>
 
-      {/* 作成ボタン */}
+      {/* 送信ボタン */}
       <Button
         type="submit"
         disabled={submitting || !title.trim() || dates.every((d) => !d.date)}
         className="w-full bg-sky-600 hover:bg-sky-700 text-white text-lg py-6 cursor-pointer"
       >
-        {submitting ? "作成中..." : "イベントを作成する"}
+        {submitting
+          ? isEdit ? "保存中..." : "作成中..."
+          : isEdit ? "変更を保存する" : "イベントを作成する"}
       </Button>
     </form>
   );

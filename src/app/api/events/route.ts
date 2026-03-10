@@ -13,5 +13,5 @@ export async function POST(request: NextRequest) {
   }
 
   const event = await createEvent(body);
-  return NextResponse.json({ slug: event.slug }, { status: 201 });
+  return NextResponse.json({ slug: event.slug, adminToken: event.adminToken }, { status: 201 });
 }

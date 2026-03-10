@@ -16,10 +16,11 @@ function generateSlug(): string {
 // ============================================================
 async function createEventSupabase(input: CreateEventInput): Promise<Event> {
   const slug = generateSlug();
+  const adminToken = nanoid(16);
 
   const { data: event, error: eventErr } = await supabase!
     .from("events")
-    .insert({ slug, title: input.title, description: input.description })
+    .insert({ slug, title: input.title, description: input.description, admin_token: adminToken })
     .select()
     .single();
   if (eventErr) throw eventErr;
@@ -68,6 +69,7 @@ async function createEventSupabase(input: CreateEventInput): Promise<Event> {
     })),
     participants: [],
     createdAt: event.created_at,
+    adminToken,
   };
 }
 
@@ -154,6 +156,64 @@ async function getEventBySlugSupabase(slug: string): Promise<Event | undefined> 
   };
 }
 
+async function updateEventSupabase(
+  slug: string,
+  adminToken: string,
+  input: CreateEventInput
+): Promise<boolean> {
+  const { data: event } = await supabase!
+    .from("events")
+    .select("id, admin_token")
+    .eq("slug", slug)
+    .single();
+  if (!event || event.admin_token !== adminToken) return false;
+
+  await supabase!
+    .from("events")
+    .update({ title: input.title, description: input.description })
+    .eq("id", event.id);
+
+  // 日付を差し替え
+  await supabase!.from("event_dates").delete().eq("event_id", event.id);
+  if (input.dates.length > 0) {
+    await supabase!.from("event_dates").insert(
+      input.dates.map((d) => ({
+        event_id: event.id,
+        date: d.date,
+        time_label: d.timeLabel,
+      }))
+    );
+  }
+
+  // 施設を差し替え
+  await supabase!.from("event_facilities").delete().eq("event_id", event.id);
+  const validFacilities = input.facilities.filter((f) => f.name.trim());
+  if (validFacilities.length > 0) {
+    await supabase!.from("event_facilities").insert(
+      validFacilities.map((f) => ({
+        event_id: event.id,
+        name: f.name,
+        address: f.address,
+        url: f.url,
+      }))
+    );
+  }
+
+  return true;
+}
+
+async function deleteEventSupabase(slug: string, adminToken: string): Promise<boolean> {
+  const { data: event } = await supabase!
+    .from("events")
+    .select("id, admin_token")
+    .eq("slug", slug)
+    .single();
+  if (!event || event.admin_token !== adminToken) return false;
+
+  await supabase!.from("events").delete().eq("id", event.id);
+  return true;
+}
+
 async function addResponseSupabase(
   slug: string,
   input: CreateResponseInput
@@ -212,6 +272,7 @@ async function addResponseSupabase(
 function createEventMemory(input: CreateEventInput): Event {
   const id = nanoid();
   const slug = generateSlug();
+  const adminToken = nanoid(16);
   const event: Event = {
     id,
     slug,
@@ -235,9 +296,41 @@ function createEventMemory(input: CreateEventInput): Event {
       })),
     participants: [],
     createdAt: new Date().toISOString(),
+    adminToken,
   };
   memoryEvents.set(slug, event);
   return event;
+}
+
+function updateEventMemory(slug: string, adminToken: string, input: CreateEventInput): boolean {
+  const event = memoryEvents.get(slug);
+  if (!event || event.adminToken !== adminToken) return false;
+  event.title = input.title;
+  event.description = input.description;
+  event.dates = input.dates.map((d) => ({
+    id: nanoid(),
+    eventId: event.id,
+    date: d.date,
+    timeLabel: d.timeLabel,
+  }));
+  event.facilities = input.facilities
+    .filter((f) => f.name.trim())
+    .map((f) => ({
+      id: nanoid(),
+      eventId: event.id,
+      name: f.name,
+      address: f.address,
+      url: f.url,
+      votes: 0,
+    }));
+  return true;
+}
+
+function deleteEventMemory(slug: string, adminToken: string): boolean {
+  const event = memoryEvents.get(slug);
+  if (!event || event.adminToken !== adminToken) return false;
+  memoryEvents.delete(slug);
+  return true;
 }
 
 function addResponseMemory(slug: string, input: CreateResponseInput): Participant | null {
@@ -271,6 +364,23 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
 export async function getEventBySlug(slug: string): Promise<Event | undefined> {
   if (isSupabaseConfigured) return getEventBySlugSupabase(slug);
   return memoryEvents.get(slug);
+}
+
+export async function updateEvent(
+  slug: string,
+  adminToken: string,
+  input: CreateEventInput
+): Promise<boolean> {
+  if (isSupabaseConfigured) return updateEventSupabase(slug, adminToken, input);
+  return updateEventMemory(slug, adminToken, input);
+}
+
+export async function deleteEvent(
+  slug: string,
+  adminToken: string
+): Promise<boolean> {
+  if (isSupabaseConfigured) return deleteEventSupabase(slug, adminToken);
+  return deleteEventMemory(slug, adminToken);
 }
 
 export async function addResponse(

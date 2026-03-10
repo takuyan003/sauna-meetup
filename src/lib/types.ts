@@ -7,6 +7,7 @@ export interface Event {
   facilities: EventFacility[];
   participants: Participant[];
   createdAt: string;
+  adminToken?: string;
 }
 
 export interface EventDate {
