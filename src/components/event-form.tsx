@@ -146,16 +146,16 @@ export function EventForm({ editEvent, adminToken }: EventFormProps = {}) {
         <CardHeader>
           <CardTitle className="text-sky-900">候補日時 <span className="text-red-500">*</span></CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 overflow-hidden">
           {dates.map((d, i) => (
             <div key={i} className="flex flex-col sm:flex-row gap-2 sm:items-end">
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 <Label className="text-sky-800 text-sm">日付</Label>
                 <Input
                   type="date"
                   value={d.date}
                   onChange={(e) => updateDate(i, "date", e.target.value)}
-                  className="border-sky-300 focus-visible:ring-sky-400 w-full"
+                  className="border-sky-300 focus-visible:ring-sky-400 w-full max-w-full"
                   required
                 />
               </div>

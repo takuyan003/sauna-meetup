@@ -126,4 +126,11 @@
   html {
     @apply font-sans;
   }
+  input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 }
