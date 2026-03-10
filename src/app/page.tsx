@@ -3,7 +3,7 @@ import { EventForm } from "@/components/event-form";
 export default function Home() {
   return (
     <div>
-      <div className="relative mb-10">
+      <div className="relative mb-4">
         <div className="flex items-center">
           <div className="w-40 h-40 shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
